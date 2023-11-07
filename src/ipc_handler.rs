@@ -58,6 +58,15 @@ impl IpcHandler {
                 self.inst.get_info_by_id(&id.to_string())
 
             },
+            "getallinfo"=> {
+                self.inst.get_all_playing_info()
+                    .map(|result|result.into())
+            }
+            "setvolume"=> {
+                let volume = args[0].as_f32().ok_or("args[0] (volume) must be a string".to_string())?;
+                self.inst.set_global_volume(volume)
+                    .map(|_| object! {success: true})
+            },
             "loadgameassets"=> {
                 let root = args[0].as_str().ok_or("args[0] (root) must be a string".to_string())?;
                 let result = self.inst.load_game_assets(root.into())?;
@@ -68,15 +77,3 @@ impl IpcHandler {
         }
     }
 }
-
-trait JsonValueExt {
-    fn get_by_index(&self, index: usize) -> JsonValue;
-}
-
-// impl JsonValueExt for Vec<JsonValue> {
-//     fn get_by_index(&self, index: usize) -> JsonValue {
-//         match self[index] {
-
-//         }
-//     }
-// }

@@ -11,7 +11,7 @@ use std::ptr::null_mut;
 
 pub trait ToFmodResultTrait {
     fn print(&self);
-    fn as_result(&self) -> Result<(), String>;
+    fn as_result(&self) -> FmodResult<()>;
 }
 
 /// add util fns for fmod result code
@@ -22,7 +22,7 @@ impl ToFmodResultTrait for fmod::FMOD_RESULT {
     }
 
     #[inline]
-    fn as_result(&self) -> Result<(), String> {
+    fn as_result(&self) -> FmodResult<()> {
         match *self {
             0=> Ok(()),
             n=> Err(format_fmod_result(n)),
@@ -139,6 +139,8 @@ pub struct FmodInstance {
     system: *mut fmod::FMOD_EVENTSYSTEM,
     projects: Vec<*mut fmod::FMOD_EVENTPROJECT>,
     playing_events: HashMap<String, *mut fmod::FMOD_EVENT>,
+    volume: f32,
+    major_categories: HashMap<String, *mut fmod::FMOD_EVENTCATEGORY>,
 }
 
 #[derive(Debug, Clone)]
@@ -243,52 +245,10 @@ impl FmodInstance {
                 system,
                 projects: Vec::new(),
                 playing_events: HashMap::new(),
+                volume: 1.0,
+                major_categories: HashMap::new(),
             })
         }
-    }
-
-    pub fn load_all_project_in_dir<T>(&mut self, dir: String) -> FmodResult<()> {
-        println!("[FMOD] set media path: {}", &dir);
-        let dir_c = match CString::new(dir.clone()) {
-            Ok(s)=> s,
-            Err(e)=> return Err(format!("[FMOD] failed to convert CString: {}", e.to_string())),
-        };
-        unsafe {
-            fmod::FMOD_EventSystem_SetMediaPath(self.system, dir_c.as_ptr()).as_result()?;
-        };
-
-        println!("[FMOD] load all sounds in directory");
-        let dir = match std::fs::read_dir(dir) {
-            Ok(dir)=> dir,
-            Err(e)=> return Err(format!("[FMOD] failed to access directory: {}", e.to_string())),
-        };
-
-        for entry in dir {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_file() && path.extension() == Some(&OsString::from("fev")) {
-                    let name = path.file_name().unwrap();
-                    print!("[FMOD] 🎵 - {:?} ", name);
-                    let path_c = CString::new(name.to_str().unwrap_or("")).unwrap();
-                    let loadinfo = null_mut();
-                    let mut project = null_mut();
-                    unsafe {
-                        match fmod::FMOD_EventSystem_Load(
-                            self.system, path_c.as_ptr(), 
-                            loadinfo, 
-                            &mut project
-                        ).as_result() {
-                            Ok(_)=> println!("...OK"),
-                            Err(e)=> println!("...{}", e)
-                        }
-                    }
-                    if !project.is_null() {
-                        self.projects.push(project);
-                    }
-                }
-            }
-        }
-        Ok(())
     }
 
     /// load all *.fev asset files in game data directory.
@@ -369,7 +329,7 @@ impl FmodInstance {
     }
 
     /// get information of a fmod event
-    pub fn get_event_info(&self, event: *mut fmod::FMOD_EVENT) -> FmodResult<FmodEventInfo> {
+    pub fn get_event_info(&mut self, event: *mut fmod::FMOD_EVENT) -> FmodResult<FmodEventInfo> {
         // name
         let mut name = null_mut();
         let mut info = fmod::FMOD_EVENT_INFO::default();
@@ -394,6 +354,11 @@ impl FmodInstance {
             };
             if parent.is_null() {
                 category_name_list.reverse();
+                // record major category
+                let major_name = category_name_list[0].to_string();
+                self.major_categories.entry(major_name)
+                    .or_insert(category);
+
                 break category_name_list.join("/")
             }
             else {
@@ -522,6 +487,7 @@ impl FmodInstance {
     }
 
     pub fn get_info_by_id(&self, id: &String) -> FmodResult<JsonValue> {
+        self.update()?;
         if let Some(event) = self.playing_events.get(id) {
             // let info = self.get_event_info(*event)?;
             let playing_info = self.get_playing_event_info(*event)?;
@@ -532,10 +498,25 @@ impl FmodInstance {
         }
     }
 
+    pub fn get_all_playing_info(&self) -> FmodResult<HashMap<String, FmodPlayingEventInfo>> {
+        self.update()?;
+        let mut result = HashMap::with_capacity(self.playing_events.len());
+        self.playing_events.iter()
+            .for_each(|(id, event)|{
+                println!("{} {:?}", id, event);
+                if let Ok(info) = self.get_playing_event_info(*event){
+                    result.insert(id.to_string(), info);
+                }
+            });
+        Ok(result)
+    }
+
     pub fn play_sound(&mut self, event_name: String, id: String) -> FmodResult<()> {
         self.kill_sound(&id)?;
         let event = self.get_event(event_name, false)?;
+        self.set_seek_mode(event, "instant")?;
         unsafe { fmod::FMOD_Event_Start(event).as_result()?; }
+        self.playing_events.insert(id, event);
         Ok(())
     }
 
@@ -558,6 +539,26 @@ impl FmodInstance {
         Ok(())
     }
 
+    pub fn set_seek_mode(&self, event: *mut fmod::FMOD_EVENT, mode: &str) -> FmodResult<()> {
+        let mut num_params = 0;
+        unsafe { fmod::FMOD_Event_GetNumParameters(event, &mut num_params).as_result()?; }
+        for i in 0..num_params {
+            let mut param = null_mut();
+            unsafe { fmod::FMOD_Event_GetParameterByIndex(event, i, &mut param).as_result()?; }
+            match mode {
+                "instant"=> unsafe {
+                    fmod::FMOD_EventParameter_SetSeekSpeed(param, -1.0).as_result()?;
+                },
+                "seek"=> unsafe {
+                    let default_speed = unimplemented!();
+                    fmod::FMOD_EventParameter_SetSeekSpeed(param, default_speed).as_result()?;
+                },
+                _ => return Err(format!("Invalid seek mode: {}", mode))
+            }
+        }
+        Ok(())
+    }
+
     /// limit extreme parameter value
     /// for some sfx, increasing intensity above 95% may cause the sound effects to not play
     /// (unknown reason, I think there is a problem with the parameter range when klei made these sound effects)
@@ -572,4 +573,27 @@ impl FmodInstance {
         }
     }
 
+    pub fn set_global_volume(&mut self, volume: f32) -> FmodResult<()> {
+        for (id, category) in &self.major_categories {
+            if let Err(e) = unsafe { fmod::FMOD_EventCategory_SetVolume(*category, volume).as_result() } {
+                println!("[FMOD] Failed to set volume to category: {}\n{}", id, e);
+            }
+        }
+        self.volume = volume;
+        Ok(())
+    }
+
+    pub fn get_global_volume(&self) -> FmodResult<f32> {
+        Ok(self.volume)
+    }
+
+    pub fn update(&self) -> FmodResult<()> {
+        match unsafe { fmod::FMOD_EventSystem_Update(self.system).as_result() } {
+            Ok(_)=> Ok(()),
+            Err(e)=> {
+                eprintln!("[FMOD] Error in update: {}", e);
+                std::process::exit(102);
+            }
+        }
+    }
 }
