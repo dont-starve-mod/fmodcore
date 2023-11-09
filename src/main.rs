@@ -1,5 +1,6 @@
-use std::io::{stdin, BufRead, BufReader};
+use std::io::{stdin, stdout, stderr, BufRead, BufReader, Write};
 use std::error::Error;
+use std::result;
 
 #[macro_use]
 extern crate json;
@@ -25,10 +26,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
     
     let reader = BufReader::new(stdin());
-    reader.lines().for_each(|s| {
-        match handler.on_message_str(s.unwrap().as_str()) {
-            Ok(result)=> println!("[RESULT] {}", json::stringify(result)),
-            Err(e)=> eprintln!("[FMOD] {}", e),
+    reader.lines().for_each(|line| {
+        eprintln!("[DEBUG] handle line: {:?}", line);
+        match handler.on_message_str(line.unwrap().as_str()) {
+            Ok(result)=> {
+                let mut out = stdout();
+                writeln!(out.lock(), "[RESULT] {}",
+                    json::stringify(result)).unwrap();
+                out.flush().unwrap();
+            },
+            Err(e)=> {
+                let mut err = stderr();
+                writeln!(err.lock(), "[FMOD] {}",
+                    e.to_string()).unwrap();
+                err.flush().unwrap();
+            },
         }
     });
     Ok(())

@@ -34,7 +34,7 @@ impl IpcHandler {
     }
 
     pub fn on_message(&mut self, api: String, args: JsonValue) -> IpcResult<JsonValue> {
-        match api.to_lowercase().as_str() {
+        let result = match api.to_lowercase().as_str() {
             "playsound"=> {
                 let event_name = args[0].as_str().ok_or("args[0] (event_name) must be a string".to_string())?;
                 let id = args[1].as_str().ok_or("args[1] (id) must be a string".to_string())?;
@@ -56,7 +56,6 @@ impl IpcHandler {
             "getinfobyid"=> {
                 let id = args[0].as_str().ok_or("args[0] (id) must be a string".to_string())?;
                 self.inst.get_info_by_id(&id.to_string())
-
             },
             "getallinfo"=> {
                 self.inst.get_all_playing_info()
@@ -70,10 +69,11 @@ impl IpcHandler {
             "loadgameassets"=> {
                 let root = args[0].as_str().ok_or("args[0] (root) must be a string".to_string())?;
                 let result = self.inst.load_game_assets(root.into())?;
-                std::fs::write("sfx.json", json::stringify(result)).unwrap();
-                Ok(object! {})
+                // std::fs::write("sfx.json", json::stringify_pretty(&result, 2)).unwrap();
+                Ok(result)
             },
             _=> return Err(format!("Invalid api name: {}", api))
-        }
+        }?;
+        Ok(object! {"api": api, "result": result})
     }
 }
