@@ -182,8 +182,22 @@ pub struct FmodEventInfo {
 }
 
 impl FmodEventInfo {
+    #[inline]
     pub fn get_path(&self) -> String {
         format!("{}/{}/{}", self.project, self.group, self.name)
+    }
+
+    pub fn get_hash(&self) -> u32 {
+        self.get_path().as_bytes().iter()
+            .fold::<u64, _>(0, |hash, x|{
+                let x = match *x as u64 {
+                    n @ 65..=90 => n + 32,
+                    n if n > 127 => n + 0xFFFFFF00,
+                    n => n
+                };
+                (x + (hash << 6) + (hash << 16) - hash) & 0xFFFFFFFF
+            })
+        as u32
     }
 }
 
@@ -309,15 +323,30 @@ impl FmodInstance {
                                 );
                             },
                             Err(_)=> ()
-                        }
+                        };
                     }
                 }
 
                 result[name] = object! {
+                    filename: path.file_name().unwrap().to_string_lossy().to_string(),
                     fullpath: path.to_string_lossy().to_string(),
                     event_map: event_map,
                 }
             }
+        }
+
+        // list all categories
+        let mut num_categories = 0;
+        let mut category = null_mut();
+        let mut name = null_mut();
+        unsafe { fmod::FMOD_EventSystem_GetNumCategories(self.system, &mut num_categories).as_result()?; }
+        for i in 0..num_categories {
+            unsafe {
+                fmod::FMOD_EventSystem_GetCategoryByIndex(self.system, i, &mut category).as_result()?;
+                fmod::FMOD_EventCategory_GetInfo(category, null_mut(), &mut name).as_result()?;
+                eprintln!("[DEBUG] cate name: {}", convert_mem_to_string(name));
+            }
+            self.major_categories.insert(convert_mem_to_string(name), category);
         }
         
         Ok(result)
@@ -329,7 +358,7 @@ impl FmodInstance {
     }
 
     /// get information of a fmod event
-    pub fn get_event_info(&mut self, event: *mut fmod::FMOD_EVENT) -> FmodResult<FmodEventInfo> {
+    pub fn get_event_info(&self, event: *mut fmod::FMOD_EVENT) -> FmodResult<FmodEventInfo> {
         // name
         let mut name = null_mut();
         let mut info = fmod::FMOD_EVENT_INFO::default();
@@ -354,11 +383,6 @@ impl FmodInstance {
             };
             if parent.is_null() {
                 category_name_list.reverse();
-                // record major category
-                let major_name = category_name_list[0].to_string();
-                self.major_categories.entry(major_name)
-                    .or_insert(category);
-
                 break category_name_list.join("/")
             }
             else {
@@ -498,14 +522,22 @@ impl FmodInstance {
         }
     }
 
-    pub fn get_all_playing_info(&self) -> FmodResult<HashMap<String, FmodPlayingEventInfo>> {
+    pub fn get_all_playing_info(&self) -> FmodResult<HashMap<String, JsonValue>> {
         self.update()?;
         let mut result = HashMap::with_capacity(self.playing_events.len());
         self.playing_events.iter()
             .for_each(|(id, event)|{
-                println!("{} {:?}", id, event);
-                if let Ok(info) = self.get_playing_event_info(*event){
-                    result.insert(id.to_string(), info);
+                let info = self.get_event_info(*event);
+                let playing_info = self.get_playing_event_info(*event);
+                if let (Ok(info), Ok(playing_info)) = (info, playing_info) {
+                    let data = object! {
+                        path: info.get_path(),
+                        hash: info.get_hash(),
+                        positionms: playing_info.positionms,
+                        lengthms: playing_info.lengthms,
+                        param_list: playing_info.param_list,
+                    };
+                    result.insert(id.to_string(), data);
                 }
             });
         Ok(result)

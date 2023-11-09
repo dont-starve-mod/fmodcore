@@ -34,42 +34,42 @@ impl IpcHandler {
     }
 
     pub fn on_message(&mut self, api: String, args: JsonValue) -> IpcResult<JsonValue> {
-        let result = match api.to_lowercase().as_str() {
-            "playsound"=> {
+        let result = match api.as_str() {
+            "PlaySound"=> {
                 let event_name = args[0].as_str().ok_or("args[0] (event_name) must be a string".to_string())?;
                 let id = args[1].as_str().ok_or("args[1] (id) must be a string".to_string())?;
                 self.inst.play_sound(event_name.into(), id.into())
                     .map(|_| object! {success: true})
             },
-            "killsound"=> {
+            "KillSound"=> {
                 let id = args[0].as_str().ok_or("args[0] (id) must be a string".to_string())?;
                 self.inst.kill_sound(&id.to_string())
                     .map(|_| object! {success: true})
             },
-            "setparameter"=> {
+            "SetParameter"=> {
                 let id = args[0].as_str().ok_or("args[0] (id) must be a string".to_string())?;
                 let param_name = args[1].as_str().ok_or("args[1] (param_name) must be a string".to_string())?;
                 let value = args[2].as_f32().ok_or("args[2] (value) must be a float".to_string())?;
                 self.inst.set_parameter(id.into(), param_name.into(), value)
                     .map(|_| object! {success: true})
             },
-            "getinfobyid"=> {
+            "GetInfoById"=> {
                 let id = args[0].as_str().ok_or("args[0] (id) must be a string".to_string())?;
                 self.inst.get_info_by_id(&id.to_string())
             },
-            "getallinfo"=> {
+            "GetAllInfo"=> {
                 self.inst.get_all_playing_info()
                     .map(|result|result.into())
             }
-            "setvolume"=> {
+            "SetVolume"=> {
                 let volume = args[0].as_f32().ok_or("args[0] (volume) must be a string".to_string())?;
                 self.inst.set_global_volume(volume)
                     .map(|_| object! {success: true})
             },
-            "loadgameassets"=> {
+            "LoadGameAssets"=> {
                 let root = args[0].as_str().ok_or("args[0] (root) must be a string".to_string())?;
+                self.inst.unload_all()?; // TODO: only unload game assets?
                 let result = self.inst.load_game_assets(root.into())?;
-                // std::fs::write("sfx.json", json::stringify_pretty(&result, 2)).unwrap();
                 Ok(result)
             },
             _=> return Err(format!("Invalid api name: {}", api))

@@ -1,6 +1,5 @@
 use std::io::{stdin, stdout, stderr, BufRead, BufReader, Write};
 use std::error::Error;
-use std::result;
 
 #[macro_use]
 extern crate json;
