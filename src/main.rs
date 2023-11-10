@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     
     let reader = BufReader::new(stdin());
     reader.lines().for_each(|line| {
-        eprintln!("[DEBUG] handle line: {:?}", line);
+        // eprintln!("[DEBUG] handle line: {:?}", line);
         match handler.on_message_str(line.unwrap().as_str()) {
             Ok(result)=> {
                 let mut out = stdout();

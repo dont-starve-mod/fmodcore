@@ -5,7 +5,7 @@ mod fmod;
 extern crate json;
 use json::JsonValue;
 use std::fs;
-use std::ffi::{CStr, CString, OsString};
+use std::ffi::{CStr, CString, OsString, c_void};
 use std::path::{PathBuf, MAIN_SEPARATOR};
 use std::ptr::null_mut;
 
@@ -204,6 +204,8 @@ impl FmodEventInfo {
 impl Into<JsonValue> for FmodEventInfo {
     fn into(self) -> JsonValue {
         object! {
+            hash: self.get_hash(),
+            path: self.get_path(),
             name: self.name,
             group: self.group,
             project: self.project,
@@ -533,6 +535,7 @@ impl FmodInstance {
                     let data = object! {
                         path: info.get_path(),
                         hash: info.get_hash(),
+                        playing: playing_info.playing,
                         positionms: playing_info.positionms,
                         lengthms: playing_info.lengthms,
                         param_list: playing_info.param_list,
@@ -547,6 +550,11 @@ impl FmodInstance {
         self.kill_sound(&id)?;
         let event = self.get_event(event_name, false)?;
         self.set_seek_mode(event, "instant")?;
+        // ignore fadein
+        let mut fadein_time: i32 = 0;
+        unsafe { fmod::FMOD_Event_SetPropertyByIndex(event, 
+            fmod::FMOD_EVENT_PROPERTY_FMOD_EVENTPROPERTY_FADEIN as i32,
+            &mut fadein_time as *mut i32 as *mut c_void, 1 /* this_instance */).as_result()?; }
         unsafe { fmod::FMOD_Event_Start(event).as_result()?; }
         self.playing_events.insert(id, event);
         Ok(())
