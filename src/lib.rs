@@ -157,7 +157,7 @@ impl Into<JsonValue> for FmodParam {
             object! {
                 name: self.name,
                 range: [self.range.0, self.range.1],
-                current: self.current,
+                current: self.current.unwrap(),
                 seekspeed: self.seekspeed,
             }
         }
@@ -546,7 +546,7 @@ impl FmodInstance {
         Ok(result)
     }
 
-    pub fn play_sound(&mut self, event_name: String, id: String) -> FmodResult<()> {
+    pub fn play_sound(&mut self, event_name: String, id: String, params: Option<JsonValue>) -> FmodResult<()> {
         self.kill_sound(&id)?;
         let event = self.get_event(event_name, false)?;
         self.set_seek_mode(event, "instant")?;
@@ -557,6 +557,21 @@ impl FmodInstance {
             &mut fadein_time as *mut i32 as *mut c_void, 1 /* this_instance */).as_result()?; }
         unsafe { fmod::FMOD_Event_Start(event).as_result()?; }
         self.playing_events.insert(id, event);
+        
+        // for `PlaySoundWithParams`
+        if let Some(params) = params {
+            let mut param  = null_mut();
+            params.entries().for_each(|(k, v)|{
+                let v = v.as_f32();
+                if v.is_none() {
+                    return;
+                }
+                if unsafe { fmod::FMOD_Event_GetParameter(event, k.as_ptr().cast(), &mut param).as_result() }.is_ok() {
+                    let value = self.normalize_parameter_value(param, k, v.unwrap()).unwrap_or(0.0);
+                    unsafe { fmod::FMOD_EventParameter_SetValue(param, value); }
+                }
+            });
+        }
         Ok(())
     }
 

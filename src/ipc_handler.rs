@@ -33,12 +33,12 @@ impl IpcHandler {
         }
     }
 
-    pub fn on_message(&mut self, api: String, args: JsonValue) -> IpcResult<JsonValue> {
+    pub fn on_message(&mut self, api: String, mut args: JsonValue) -> IpcResult<JsonValue> {
         let result = match api.as_str() {
             "PlaySound"=> {
                 let event_name = args[0].as_str().ok_or("args[0] (event_name) must be a string".to_string())?;
                 let id = args[1].as_str().ok_or("args[1] (id) must be a string".to_string())?;
-                self.inst.play_sound(event_name.into(), id.into())
+                self.inst.play_sound(event_name.into(), id.into(), None)
                     .map(|_| object! {success: true})
             },
             "KillSound"=> {
@@ -53,6 +53,15 @@ impl IpcHandler {
                 self.inst.set_parameter(id.into(), param_name.into(), value)
                     .map(|_| object! {success: true})
             },
+            "PlaySoundWithParams"=> {
+                let event_name = args[0].as_str().ok_or("args[0] (event_name) must be a string".to_string())?;
+                let id = args[1].as_str().ok_or("args[1] (id) must be a string".to_string())?;
+                if !args[2].is_object(){
+                    return Err("args[2] (params) must be a object {string: float}".to_string());
+                }
+                self.inst.play_sound(event_name.into(), id.into(), Some(args[2].take()))
+                    .map(|_| object! {success: true})
+            }
             "GetInfoById"=> {
                 let id = args[0].as_str().ok_or("args[0] (id) must be a string".to_string())?;
                 self.inst.get_info_by_id(&id.to_string())
