@@ -550,7 +550,7 @@ impl FmodInstance {
         self.kill_sound(&id)?;
         let event = self.get_event(event_name, false)?;
         self.set_seek_mode(event, "instant")?;
-        // ignore fadein
+        // ignore fadein time
         let mut fadein_time: i32 = 0;
         unsafe { fmod::FMOD_Event_SetPropertyByIndex(event, 
             fmod::FMOD_EVENT_PROPERTY_FMOD_EVENTPROPERTY_FADEIN as i32,
@@ -587,7 +587,7 @@ impl FmodInstance {
             unsafe { fmod::FMOD_Event_GetParameterByIndex(event, i, &mut param).as_result()?; }
             match mode {
                 "instant"=> unsafe {
-                    fmod::FMOD_EventParameter_SetSeekSpeed(param, -1.0).as_result()?;
+                    fmod::FMOD_EventParameter_SetSeekSpeed(param, 1e10).as_result()?;
                 },
                 "seek"=> unsafe {
                     let default_speed = unimplemented!();
