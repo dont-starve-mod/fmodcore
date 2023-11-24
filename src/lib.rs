@@ -291,9 +291,24 @@ impl FmodInstance {
                 let name = path.file_name().unwrap();
                 print!("[FMOD] 🎵 - {:?} ", name);
                 let mut project = null_mut();
+                let name_string = match name.to_str() {
+                    Some(s)=> s.to_string(),
+                    None=> {
+                        eprintln!("Failed to parse OsString");
+                        continue;
+                    }
+                };
+                let name_cstring = match CString::new(name_string.as_bytes().to_vec()) {
+                    Ok(s)=> s,
+                    Err(e)=> {
+                        eprintln!("Failed to construct CString: {}", e.to_string());
+                        continue;
+                    }
+                };
+
                 unsafe {
                     match fmod::FMOD_EventSystem_Load(
-                        self.system, name.to_str().unwrap().as_ptr().cast(), 
+                        self.system, name_cstring.as_ptr(), 
                         null_mut(),
                         &mut project
                     ).as_result() {
@@ -566,9 +581,11 @@ impl FmodInstance {
                 if v.is_none() {
                     return;
                 }
-                if unsafe { fmod::FMOD_Event_GetParameter(event, k.as_ptr().cast(), &mut param).as_result() }.is_ok() {
-                    let value = self.normalize_parameter_value(param, k, v.unwrap()).unwrap_or(0.0);
-                    unsafe { fmod::FMOD_EventParameter_SetValue(param, value); }
+                if let Ok(s) = CString::new(k){
+                    if unsafe { fmod::FMOD_Event_GetParameter(event, s.as_ptr(), &mut param).as_result() }.is_ok() {
+                        let value = self.normalize_parameter_value(param, k, v.unwrap()).unwrap_or(0.0);
+                        unsafe { fmod::FMOD_EventParameter_SetValue(param, value); }
+                    }
                 }
             });
         }
@@ -578,7 +595,9 @@ impl FmodInstance {
     pub fn kill_sound(&mut self, id: &String) -> FmodResult<()> {
         if let Some(event) = self.playing_events.remove(id) {
             if let Err(e) = unsafe { fmod::FMOD_Event_Stop(event, 1 /* true */).as_result() } {
-                eprintln!("[FMOD] Warning: failed to kill sound `{id}` ({e})");
+                if e.as_str() != "FMOD_RESULT_FMOD_ERR_INVALID_HANDLE" { // ignore this warning, failed to kill sound is acceptable
+                    eprintln!("[FMOD] Warning: failed to kill sound `{id}` ({e})");
+                }
             }
         }
         Ok(())

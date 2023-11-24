@@ -10,6 +10,7 @@ use fmodcore::*;
 
 /*  test input
 {"api": "LoadGameAssets", "args": ["/Users/wzh/Library/Application Support/Steam/steamapps/common/Don't Starve Together/dontstarve_steam.app/Contents/data/sound"]}
+{"api": "LoadGameAssets", "args": ["C:\\Program Files (x86)\\Steam\\steamapps\\common\\Don't Starve Together\\data\\sound"]}
 {"api": "PlaySound", "args": ["turnoftides/common/together/moon_glass/mine", "DEBUG"]}
 {"api": "KillSound", "args": ["DEBUG"]}
 {"api": "PlaySound", "args": ["turnoftides/common/together/water/wave/LP", "WAVE"]}
