@@ -1,13 +1,13 @@
 fn main() {
     println!(r"cargo:rustc-link-search=./");
 
-    #[cfg(macos)]
+    #[cfg(target_os="macos")]
     println!(r"cargo:rustc-link-lib=fmodevent");
-    #[cfg(macos)]
+    #[cfg(target_os="macos")]
     println!(r"cargo:rustc-link-lib=fmodex");
 
-    #[cfg(windows)]
+    #[cfg(target_os="windows")]
     println!(r"cargo:rustc-link-lib=fmod_event64");
-    #[cfg(windows)]
+    #[cfg(target_os="windows")]
     println!(r"cargo:rustc-link-lib=fmodex64");
 }

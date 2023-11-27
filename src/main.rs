@@ -21,7 +21,7 @@ use fmodcore::*;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut handler = ipc_handler::IpcHandler::new().unwrap_or_else(|e|{
-        eprintln!("Failed to create handler: {}", e.to_string());
+        eprintln!("Failed to create handler: {}", e);
         std::process::exit(101);
     });
     
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             Err(e)=> {
                 let mut err = stderr();
                 writeln!(err.lock(), "[FMOD] {}",
-                    e.to_string()).unwrap();
+                    e).unwrap();
                 err.flush().unwrap();
             },
         }

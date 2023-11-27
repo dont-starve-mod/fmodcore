@@ -151,21 +151,21 @@ pub struct FmodParam {
     seekspeed: Option<f32>,
 }
 
-impl Into<JsonValue> for FmodParam {
-    fn into(self) -> JsonValue {
-        if self.current.is_some() {
+impl From<FmodParam> for JsonValue {
+    fn from(value: FmodParam) -> Self {
+        if value.current.is_some() {
             object! {
-                name: self.name,
-                range: [self.range.0, self.range.1],
-                current: self.current.unwrap(),
-                seekspeed: self.seekspeed,
+                name: value.name,
+                range: [value.range.0, value.range.1],
+                current: value.current.unwrap(),
+                seekspeed: value.seekspeed,
             }
         }
         else {
             object! {
-                name: self.name,
-                range: [self.range.0, self.range.1],
-                seekspeed: self.seekspeed,
+                name: value.name,
+                range: [value.range.0, value.range.1],
+                seekspeed: value.seekspeed,
             }
         }
     }
@@ -201,17 +201,17 @@ impl FmodEventInfo {
     }
 }
 
-impl Into<JsonValue> for FmodEventInfo {
-    fn into(self) -> JsonValue {
+impl From<FmodEventInfo> for JsonValue {
+    fn from(value: FmodEventInfo) -> Self {
         object! {
-            hash: self.get_hash(),
-            path: self.get_path(),
-            name: self.name,
-            group: self.group,
-            project: self.project,
-            category: self.category,
-            lengthms: self.lengthms,
-            param_list: self.param_list,
+            hash: value.get_hash(),
+            path: value.get_path(),
+            name: value.name,
+            group: value.group,
+            project: value.project,
+            category: value.category,
+            lengthms: value.lengthms,
+            param_list: value.param_list,
         }
     }
 }
@@ -223,13 +223,13 @@ pub struct FmodPlayingEventInfo {
     lengthms: i32,
 }
 
-impl Into<JsonValue> for FmodPlayingEventInfo {
-    fn into(self) -> JsonValue {
+impl From<FmodPlayingEventInfo> for JsonValue {
+    fn from(value: FmodPlayingEventInfo) -> Self {
         object! {
-            playing: self.playing,
-            param_list: self.param_list,
-            positionms: self.positionms,
-            lengthms: self.lengthms,
+            playing: value.playing,
+            param_list: value.param_list,
+            positionms: value.positionms,
+            lengthms: value.lengthms,
         }
     }
 }
@@ -241,6 +241,7 @@ fn convert_mem_to_string(mem: *const i8) -> String {
         .to_string()
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl FmodInstance {
     pub fn new() -> FmodResult<Self> {
         println!("[FMOD] create new event system");
@@ -282,74 +283,70 @@ impl FmodInstance {
             return Err(format!("game root is not a dir: {}", root));
         }
             
-        for entry in fs::read_dir(rootpath).map_err(|e| format!("Failed to read dir: {}\n{}", root, e.to_string()))? {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if !(path.is_file() && path.extension() == Some(&OsString::from("fev"))){
+        for entry in fs::read_dir(rootpath).map_err(|e| format!("Failed to read dir: {}\n{}", root, e))?.flatten() {
+            let path = entry.path();
+            if !(path.is_file() && path.extension() == Some(&OsString::from("fev"))){
+                continue;
+            }
+            let name = path.file_name().unwrap();
+            print!("[FMOD] 🎵 - {:?} ", name);
+            let mut project = null_mut();
+            let name_string = match name.to_str() {
+                Some(s)=> s.to_string(),
+                None=> {
+                    eprintln!("Failed to parse OsString");
                     continue;
                 }
-                let name = path.file_name().unwrap();
-                print!("[FMOD] 🎵 - {:?} ", name);
-                let mut project = null_mut();
-                let name_string = match name.to_str() {
-                    Some(s)=> s.to_string(),
-                    None=> {
-                        eprintln!("Failed to parse OsString");
-                        continue;
-                    }
-                };
-                let name_cstring = match CString::new(name_string.as_bytes().to_vec()) {
-                    Ok(s)=> s,
-                    Err(e)=> {
-                        eprintln!("Failed to construct CString: {}", e.to_string());
-                        continue;
-                    }
-                };
-
-                unsafe {
-                    match fmod::FMOD_EventSystem_Load(
-                        self.system, name_cstring.as_ptr(), 
-                        null_mut(),
-                        &mut project
-                    ).as_result() {
-                        Ok(_)=> println!("...OK"),
-                        Err(e)=> println!("...{}", e)
-                    }
-                }
-                if project.is_null() {
+            };
+            let name_cstring = match CString::new(name_string.as_bytes().to_vec()) {
+                Ok(s)=> s,
+                Err(e)=> {
+                    eprintln!("Failed to construct CString: {}", e);
                     continue;
                 }
-                
-                self.projects.push(project);
-                // iter all events in project
-                let mut event_map = HashMap::new();
-                let mut project_info = fmod::FMOD_EVENT_PROJECTINFO::default();
-                unsafe { fmod::FMOD_EventProject_GetInfo(project, &mut project_info).as_result()?; }
-                let name = convert_mem_to_string(project_info.name.as_ptr());
-                let mut num_events = 0;
-                unsafe { fmod::FMOD_EventProject_GetNumEvents(project, &mut num_events).as_result()?; }
-                for i in 0..num_events {
-                    let mut event = null_mut();
-                    unsafe { fmod::FMOD_EventProject_GetEventByProjectID(project, i as u32, 4, &mut event).as_result()?; }
-                    if !event.is_null() {
-                        match self.get_event_info(event) {
-                            Ok(info)=> {
-                                event_map.insert(
-                                    info.get_path(),
-                                    info,
-                                );
-                            },
-                            Err(_)=> ()
-                        };
-                    }
-                }
+            };
 
-                result[name] = object! {
-                    filename: path.file_name().unwrap().to_string_lossy().to_string(),
-                    fullpath: path.to_string_lossy().to_string(),
-                    event_map: event_map,
+            unsafe {
+                match fmod::FMOD_EventSystem_Load(
+                    self.system, name_cstring.as_ptr(), 
+                    null_mut(),
+                    &mut project
+                ).as_result() {
+                    Ok(_)=> println!("...OK"),
+                    Err(e)=> println!("...{}", e)
                 }
             }
+            if project.is_null() {
+                continue;
+            }
+            
+            self.projects.push(project);
+            // iter all events in project
+            let mut event_map = HashMap::new();
+            let mut project_info = fmod::FMOD_EVENT_PROJECTINFO::default();
+            unsafe { fmod::FMOD_EventProject_GetInfo(project, &mut project_info).as_result()?; }
+            let name = convert_mem_to_string(project_info.name.as_ptr());
+            let mut num_events = 0;
+            unsafe { fmod::FMOD_EventProject_GetNumEvents(project, &mut num_events).as_result()?; }
+            for i in 0..num_events {
+                let mut event = null_mut();
+                unsafe { fmod::FMOD_EventProject_GetEventByProjectID(project, i as u32, 4, &mut event).as_result()?; }
+                if !event.is_null() {
+                    if let Ok(info) = self.get_event_info(event) {
+                        event_map.insert(
+                            info.get_path(),
+                            info,
+                        );
+                    };
+                }
+            }
+
+            result[name] = object! {
+                filename: path.file_name().unwrap().to_string_lossy().to_string(),
+                fullpath: path.to_string_lossy().to_string(),
+                event_map: event_map,
+            }
+            
         }
 
         // list all categories
@@ -449,7 +446,7 @@ impl FmodInstance {
             let mut param = null_mut();
             let mut param_name = null_mut();
             unsafe {
-                fmod::FMOD_Event_GetParameterByIndex(event, i as i32, &mut param).as_result()?;
+                fmod::FMOD_Event_GetParameterByIndex(event, i, &mut param).as_result()?;
                 fmod::FMOD_EventParameter_GetInfo(param, null_mut(), &mut param_name).as_result()?;
             }  
             if !param_name.is_null() {
