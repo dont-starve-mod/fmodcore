@@ -179,6 +179,7 @@ pub struct FmodEventInfo {
     category: String,
     lengthms: i32,
     param_list: Vec<FmodParam>,
+    guid: String,
 }
 
 impl FmodEventInfo {
@@ -212,6 +213,7 @@ impl From<FmodEventInfo> for JsonValue {
             category: value.category,
             lengthms: value.lengthms,
             param_list: value.param_list,
+            guid: value.guid,
         }
     }
 }
@@ -241,6 +243,31 @@ fn convert_mem_to_string(mem: *const i8) -> String {
         .to_string()
 }
 
+fn bytes_to_hex_string(bytes: &[u8]) -> String {
+    bytes.iter()
+        .map(|v|format!("{:02x}", v))
+        .collect::<Vec<String>>()
+        .join("")
+}
+
+fn convert_guid_to_string(guid: *mut fmod::FMOD_GUID) -> String {
+    match unsafe { guid.as_ref() } {
+        Some(guid)=> {
+            let b1 = u32::to_le_bytes(guid.Data1);
+            let b2 = u16::to_le_bytes(guid.Data2);
+            let b3 = u16::to_le_bytes(guid.Data3);
+            [
+                bytes_to_hex_string(&b1),
+                bytes_to_hex_string(&b2),
+                bytes_to_hex_string(&b3),
+                bytes_to_hex_string(&guid.Data4[0..2]),
+                bytes_to_hex_string(&guid.Data4[2..8]),
+            ].join("-")
+        },
+        None=> "".into()
+    }
+}
+
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl FmodInstance {
     pub fn new() -> FmodResult<Self> {
@@ -251,7 +278,7 @@ impl FmodInstance {
         };
         println!("[FMOD] init event system");
         unsafe {
-            fmod::FMOD_EventSystem_Init(system, 64, 0, null_mut(), 0).as_result()?;
+            fmod::FMOD_EventSystem_Init(system, 64, 0, null_mut(), fmod::FMOD_EVENT_INIT_USE_GUIDS).as_result()?;
         };
 
         if system.is_null() {
@@ -376,6 +403,8 @@ impl FmodInstance {
         // name
         let mut name = null_mut();
         let mut info = fmod::FMOD_EVENT_INFO::default();
+        let mut guid = fmod::FMOD_GUID::default();
+        info.guid = &mut guid; // set guid pointer
         unsafe {
             fmod::FMOD_Event_GetInfo(event, std::ptr::null_mut(), &mut name, &mut info).as_result()?;
         }
@@ -448,7 +477,7 @@ impl FmodInstance {
             unsafe {
                 fmod::FMOD_Event_GetParameterByIndex(event, i, &mut param).as_result()?;
                 fmod::FMOD_EventParameter_GetInfo(param, null_mut(), &mut param_name).as_result()?;
-            }  
+            } 
             if !param_name.is_null() {
                 let (mut min, mut max, mut seekspeed) = (0.0, 0.0, 0.0);
                 unsafe {
@@ -470,6 +499,7 @@ impl FmodInstance {
             project: convert_mem_to_string(project_info.name.as_ptr()),
             lengthms: info.lengthms,
             param_list,
+            guid: convert_guid_to_string(info.guid),
         })
     }
 

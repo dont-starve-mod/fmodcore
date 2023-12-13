@@ -417,13 +417,14 @@ fn bindgen_test_layout_FMOD_VECTOR() {
     );
 }
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct FMOD_GUID {
     pub Data1: ::std::os::raw::c_uint,
     pub Data2: ::std::os::raw::c_ushort,
     pub Data3: ::std::os::raw::c_ushort,
     pub Data4: [::std::os::raw::c_uchar; 8usize],
 }
+
 #[test]
 fn bindgen_test_layout_FMOD_GUID() {
     const UNINIT: ::std::mem::MaybeUninit<FMOD_GUID> = ::std::mem::MaybeUninit::uninit();
